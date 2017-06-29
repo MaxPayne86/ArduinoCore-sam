@@ -16,6 +16,8 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * Modified 13/10/2014 by Massimo Pennazio for AidaDSP integration
  */
 
 extern "C" {
@@ -23,6 +25,12 @@ extern "C" {
 }
 
 #include "Wire.h"
+
+// Initialize Class Variables //////////////////////////////////////////////////
+//uint16_t TwoWire::txWriteRomIndex = 0;
+//uint16_t TwoWire::txWriteRomQuantity = 0;
+//uint8_t *PtrTxRomBuffer = NULL;
+
 
 static inline bool TWI_FailedAcknowledge(Twi *pTwi) {
 	return pTwi->TWI_SR & TWI_SR_NACK;
@@ -168,6 +176,11 @@ uint8_t TwoWire::requestFrom(uint8_t address, uint8_t quantity, uint32_t iaddres
 	return readed;
 }
 
+uint8_t TwoWire::requestFromReg16(uint8_t address, uint16_t reg16, uint8_t quantity, uint8_t sendStop) 
+{
+    return requestFrom((uint8_t) address, (uint8_t) quantity, (uint32_t) reg16, (uint8_t) quantity, (uint8_t) sendStop);	
+}
+
 uint8_t TwoWire::requestFrom(uint8_t address, uint8_t quantity, uint8_t sendStop) {
 	return requestFrom((uint8_t) address, (uint8_t) quantity, (uint32_t) 0, (uint8_t) 0, (uint8_t) sendStop);
 }
@@ -225,6 +238,23 @@ uint8_t TwoWire::endTransmission(uint8_t sendStop) {
 		}
 	}
 	
+	if(txWriteRomQuantity!=0)	// Hey we have Rom Block data to transmit!
+	{
+		while(txWriteRomIndex != txWriteRomQuantity)
+		{
+			uint8_t c = *PtrTxRomBuffer++;
+			TWI_WriteByte(twi, c);
+			if (!TWI_WaitByteSent(twi, XMIT_TIMEOUT))
+			{
+				error = 3;	// error, got NACK during data transmmit
+				break;
+			}
+			else
+				txWriteRomIndex++;
+		}
+		txWriteRomQuantity=0;	// Clear to disable further tx
+	}
+
 	if (error == 0) {
 		TWI_Stop(twi);
 		if (!TWI_WaitTransferComplete(twi, XMIT_TIMEOUT))
